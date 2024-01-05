@@ -1,3 +1,5 @@
+XV6 README
+
 xv6 is a re-implementation of Dennis Ritchie's and Ken Thompson's Unix
 Version 6 (v6).  xv6 loosely follows the structure and style of v6,
 but is implemented for a modern RISC-V multiprocessor using ANSI C.
@@ -47,3 +49,48 @@ You will need a RISC-V "newlib" tool chain from
 https://github.com/riscv/riscv-gnu-toolchain, and qemu compiled for
 riscv64-softmmu.  Once they are installed, and in your shell
 search path, you can run "make qemu".
+
+MY REPORT
+
+Altered files:
+
+1: defs.h
+2: exec.c
+3: sysproc.c
+4: trap.c
+5: vm.c
+
+In order for the code to work we run make qemu and manually run the programs in question or we call make grade.
+
+Design Choices:
+
+Step 1:
+The first exercise is about creating a vmprint() function (file vm.c) to print out the page table. We use a helper function vmprint_rec() which we call recursively to print the table. 
+We used the code of the freewalk() function (with some modifications). For each page table level, recursively vmprint_rec() is called. Finally, we called vmprint() at the end of the exec() 
+function in the exec.c file.
+
+Step 2: In the second step we erase all the code from the sys_sbrk() function which allocates all the physical memory. In its place, we put code that just scales myproc()->sz by n and then returns
+the previous size.
+
+Step 3: For this step, we created the function allocate_page() that takes as arguments a process and a virtual address and allocates the required physical memory. Initially, we check whether the 
+virtual address is in the correct range (smaller than the memory that has been given with the sys_brk() and bigger than the user's stack). Next, we use the PGGROUNDDOWN to round the virtual address 
+to the smallest virtual address on the same page. Next, we allocate our memory. If there is enough space we continue otherwise we return 0. Next, we fill the new memory chunk with zeroes. Then we attempt
+to create a new page table entry. If we achieve that we return the position of the memory we created otherwise we return 0. Also in order for the function mappages() to work correctly, we changed it and 
+in the case it is already allocated we dont panic but we map again (nothing happens in this situation in the tests, the better choice would have been to free the mem but it is outside of the exercise 
+scope). Finally, we fixed the function usertrap() we created a case in which r_scause() is equal to 13 or 15. In this case, we call the allocate_page() function and if the result is 0 which means that it 
+returns an error then we kill the process. With these changes echo hi is functional. Next, we implement the functionality of the lazytests and usertests. We based our implementation on the exercise
+constraints. Initially, we handle the case of negative arguments in the sys_sbrk(). In the case of a negative argument, we deallocated the pages that were not needed using the function uvmdealloc and we 
+updated the myproc->sz. We needed to make some changes in the uvmunmap function which is called by the uvmdealloc function. We observed that for every page uvmunmap initiates a walk. In our case, the walk
+is not guaranteed to find a page table entry. In the case it does not we ignore that page. If the entry found is not valid then we don't initiate the frees that were ordered. Next, we make sure we kill the
+process in the case that the virtual address we gave is bigger than the sz of the process (we described how this is achieved in the allocate_page implementation). Then we handle the memory copying during 
+a fork(). The fork uses uvmcopy which copies the father's page table. Each time it does not find an entry for a page it does not copy it. If the page table entry is invalid then it ignores it too. If it
+is valid it allocates memory and calls memmove and mappages with correct management if there is an error. Next, we implement the case that a process passes a not valid virtual memory in the sys_read() or 
+seys_write() functions and we have not yet allocated it. Through the functions filewrite and fileread we are led to the functions writei and readi which in turn use the eithe_copying and either_copyout
+which in turn use copyin and copyout and in them, they call walkaddr(). The writei-readi functions write of read characters from inod. The functions are either_copying and either_copyout copy some virtual 
+memories both user or kernel and n copyin and copyout copy data from and to the kernel/ The walkaddr function though is responsible for the search of a virtual address. For this reason, if the 
+virtual address does not lead to some entry or leads to some invalid entry (or entry that the user does not have rights in) we make sure to call the allocate_page and to allocate the required physical
+memory and return the correct pointer to it (in case of an error we return 0). Next, we make sure we handle cases of memory exhaustion correctly. As we mentioned before in the allocate_page analysis when
+there is a problem with the kalloc function (memory insufficiency) we return 0. It is worth explaining the case of a PageFault (the usertrap function) when we find that allocate_page returns 0 we kill the
+process. In the case in which allocate_page returns 0 in the walkaddr function, we return 0 which after many returns makes ses_read() and sys_write() return -1 (correct and required functionality in
+some tests). Finally, we need to make sure we return an error in case the virtual function is under the user's stack. We mentioned before that this functionality is implemented in the allocate_page() 
+function.
